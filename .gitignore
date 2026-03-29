@@ -1,1 +1,4 @@
+agent
+docs
 **/node_modules
+**/dist

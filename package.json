@@ -1,0 +1,14 @@
+{
+  "name": "cvcraft-ai",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "pnpm@10.30.3",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm -r run build",
+    "start": "pnpm -r --parallel run start"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.0"
+  }
+}
