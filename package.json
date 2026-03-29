@@ -5,10 +5,12 @@
   "packageManager": "pnpm@10.30.3",
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
+    "dev:full": "powershell -ExecutionPolicy Bypass -File ./scripts/dev-full.ps1",
     "build": "pnpm -r run build",
     "start": "pnpm -r --parallel run start"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "@types/node": "^24.12.0"
   }
 }

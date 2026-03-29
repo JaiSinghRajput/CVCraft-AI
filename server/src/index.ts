@@ -1,18 +1,33 @@
-import { createServer } from "node:http";
+import cors from "cors";
+import express from "express";
 
-const PORT = Number(process.env.PORT ?? 3001);
+import { apiRouter } from "./api/routes";
+import { rateLimitMiddleware } from "./api/middleware/rate-limit";
+import { env } from "./lib/env";
+import { logger } from "./lib/logger";
 
-const server = createServer((req, res) => {
-	if (req.url === "/health") {
-		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ status: "ok" }));
-		return;
-	}
+const app = express();
 
-	res.writeHead(200, { "Content-Type": "application/json" });
-	res.end(JSON.stringify({ service: "cvcraft-ai-server", status: "running" }));
+app.use(
+	cors({
+		origin: env.clientOrigin,
+		credentials: false,
+	}),
+);
+app.use(express.json({ limit: "1mb" }));
+app.use(rateLimitMiddleware);
+
+app.get("/health", (_req, res) => {
+	res.status(200).json({ status: "ok" });
 });
 
-server.listen(PORT, () => {
-	console.log(`Server listening on http://localhost:${PORT}`);
+app.use("/api", apiRouter);
+
+app.use((error: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+	logger.error("Unhandled server error", error);
+	res.status(500).json({ error: "Internal server error" });
+});
+
+app.listen(env.port, () => {
+	logger.info(`API server listening on http://localhost:${env.port}`);
 });

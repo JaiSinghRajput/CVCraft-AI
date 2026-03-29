@@ -2,3 +2,8 @@ agent
 docs
 **/node_modules
 **/dist
+.env
+**/.env
+!.env.example
+!**/.env.example
+!**/.env.docker

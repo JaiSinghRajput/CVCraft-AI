@@ -1,0 +1,69 @@
+CVCraft-AI Development Startup (Windows PowerShell)
+
+Run these from the project root:
+cd C:\Users\NOBITA-X\Desktop\CVCraft-AI
+
+==================================================
+SINGLE STEP (SETUP + RUN WITH LOGGING)
+==================================================
+pnpm dev:full
+
+# This single command will:
+# - install workspace dependencies
+# - create missing .env files from examples
+# - start Postgres + Redis with Docker
+# - start Docker Model Runner and load ai/smollm2
+# - run Prisma generate + db push
+# - start API + worker + frontend with prefixed logs in one terminal
+
+==================================================
+ONE-TIME SETUP (first time only)
+==================================================
+corepack enable
+pnpm install
+
+# If .env files are missing, create them from examples:
+Copy-Item .env.example .env
+Copy-Item .\server\.env.example .\server\.env
+Copy-Item .\frontend\.env.example .\frontend\.env
+
+# Configure AI model (required)
+# For local dev server (used by `pnpm dev`): edit .\server\.env
+# Example:
+# OPENAI_BASE_URL=http://localhost:12434/engines/v1
+# OPENAI_MODEL=ai/smollm2
+# OPENAI_API_KEY=not-needed
+
+# If you run API/worker in Docker, set model in .\server\.env.docker instead:
+# OPENAI_BASE_URL=http://model-runner.docker.internal/engines/v1
+# OPENAI_MODEL=ai/smollm2
+# OPENAI_API_KEY=not-needed
+
+==================================================
+START DEVELOPMENT STACK (each time)
+==================================================
+# 1) Start Docker infra containers (Postgres + Redis)
+docker compose --profile infra up -d postgres redis
+
+# 2) Ensure Prisma client/schema is up to date (safe to re-run)
+pnpm --filter server run prisma:generate
+pnpm --filter server run prisma:push
+
+# 3) Start AI model (Docker Model Runner)
+docker model pull ai/smollm2
+docker model run -d ai/smollm2
+docker model ps
+
+# 4) Start frontend + API in dev mode (Terminal 1)
+pnpm dev
+
+# 5) Start worker in dev mode (Terminal 2)
+pnpm --filter server workers
+
+==================================================
+USEFUL STOP COMMANDS
+==================================================
+# Stop local dev processes in terminals: Ctrl + C
+
+# Stop infra containers
+docker compose --profile infra down
