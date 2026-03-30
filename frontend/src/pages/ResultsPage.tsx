@@ -58,8 +58,26 @@ fitSummary?: string;
 interface JobMatchResult {
 matchPercentage?: number;
 headline?: string;
+recommendation?: string;
+extractedRequirements?: {
+roleTitle?: string;
+jobDomain?: string;
+coreSkills?: string[];
+mustHaveRequirements?: string[];
+responsibilities?: string[];
+exclusionTerms?: string[];
+};
+domainAlignment?: {
+resumeDomain?: string;
+jobDomain?: string;
+isAligned?: boolean;
+confidence?: number;
+rationale?: string;
+};
+categoryScores?: Array<{ category?: string; score?: number; evidence?: string }>;
 matchedStrengths?: string[];
 missingSkills?: string[];
+criticalGaps?: Array<{ gap?: string; severity?: RiskLevel; whyItMatters?: string }>;
 fitSummary?: string;
 suggestions?: string[];
 }
@@ -173,6 +191,18 @@ const overallRisk = atsResult.overallRiskLevel ?? "medium";
 const matchStrengths = toList(matchResult.matchedStrengths);
 const missingSkills = toList(matchResult.missingSkills);
 const matchSuggestions = toList(matchResult.suggestions);
+const matchCategoryScores = Array.isArray(matchResult.categoryScores)
+? matchResult.categoryScores.filter((row) => row && typeof row === "object")
+: [];
+const matchCriticalGaps = Array.isArray(matchResult.criticalGaps)
+? matchResult.criticalGaps.filter((row) => row && typeof row === "object")
+: [];
+const domainAlignment = matchResult.domainAlignment;
+const recommendation = matchResult.recommendation ?? (matchScore >= 72 ? "Strong fit" : matchScore >= 48 ? "Borderline fit" : "Weak fit");
+const extractedRequirements = matchResult.extractedRequirements;
+const extractedCoreSkills = toList(extractedRequirements?.coreSkills);
+const extractedMustHaves = toList(extractedRequirements?.mustHaveRequirements);
+const extractedResponsibilities = toList(extractedRequirements?.responsibilities);
 
 const generatedSections = Array.isArray(generatedResult.sections)
 ? generatedResult.sections.filter((section) => section && typeof section === "object")
@@ -400,11 +430,88 @@ return (
 <div className="rounded-3xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-cyan-50 p-6">
 <p className="text-sm font-medium text-indigo-800">Match Score</p>
 <p className="mt-2 text-5xl font-semibold text-indigo-900">{matchScore}%</p>
+<p className="mt-2 text-sm font-medium text-indigo-900">{recommendation}</p>
 </div>
 <div className="rounded-3xl border border-slate-200 bg-white p-6 md:col-span-2">
 <h3 className="text-lg font-semibold text-slate-900">Fit Summary</h3>
 <p className="mt-3 text-sm leading-7 text-slate-700">{matchResult.headline ?? matchResult.fitSummary}</p>
 <p className="mt-3 text-sm leading-7 text-slate-700">{matchResult.fitSummary}</p>
+</div>
+</div>
+
+<div className="rounded-3xl border border-slate-200 bg-white p-6">
+<h3 className="text-lg font-semibold text-slate-900">Domain Alignment</h3>
+<div className="mt-3 grid gap-4 md:grid-cols-3">
+<div className="rounded-xl bg-slate-50 p-3">
+<p className="text-xs uppercase tracking-wider text-slate-500">Resume Domain</p>
+<p className="mt-1 font-medium text-slate-900">{domainAlignment?.resumeDomain ?? "Unknown"}</p>
+</div>
+<div className="rounded-xl bg-slate-50 p-3">
+<p className="text-xs uppercase tracking-wider text-slate-500">Job Domain</p>
+<p className="mt-1 font-medium text-slate-900">{domainAlignment?.jobDomain ?? "Unknown"}</p>
+</div>
+<div className="rounded-xl bg-slate-50 p-3">
+<p className="text-xs uppercase tracking-wider text-slate-500">Alignment Confidence</p>
+<p className="mt-1 font-medium text-slate-900">{Math.max(0, Math.min(100, Number(domainAlignment?.confidence ?? 0)))}%</p>
+</div>
+</div>
+<p className="mt-3 text-sm text-slate-700">{domainAlignment?.rationale}</p>
+</div>
+
+<div className="rounded-3xl border border-slate-200 bg-white p-6">
+<div className="flex items-center justify-between gap-3">
+<h3 className="text-lg font-semibold text-slate-900">Extracted Job Requirements</h3>
+<span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-slate-700">
+{extractedRequirements?.roleTitle ?? "Role"}
+</span>
+</div>
+<p className="mt-2 text-sm text-slate-600">Domain: {extractedRequirements?.jobDomain ?? domainAlignment?.jobDomain ?? "Unknown"}</p>
+<div className="mt-4 grid gap-4 md:grid-cols-3">
+<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+<p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Core Skills</p>
+<ul className="mt-2 space-y-1 text-sm text-slate-700">
+{extractedCoreSkills.map((item) => (
+<li key={item}>{item}</li>
+))}
+</ul>
+</div>
+<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+<p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Must-Haves</p>
+<ul className="mt-2 space-y-1 text-sm text-slate-700">
+{extractedMustHaves.map((item) => (
+<li key={item}>{item}</li>
+))}
+</ul>
+</div>
+<div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+<p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Responsibilities</p>
+<ul className="mt-2 space-y-1 text-sm text-slate-700">
+{extractedResponsibilities.map((item) => (
+<li key={item}>{item}</li>
+))}
+</ul>
+</div>
+</div>
+</div>
+
+<div className="rounded-3xl border border-slate-200 bg-white p-6">
+<h3 className="text-lg font-semibold text-slate-900">Match Breakdown</h3>
+<div className="mt-4 space-y-3">
+{matchCategoryScores.map((item) => {
+const score = Math.max(0, Math.min(100, Number(item.score ?? 0)));
+return (
+<div key={`${item.category}-${item.evidence}`} className="rounded-xl border border-slate-200 p-3">
+<div className="flex items-center justify-between gap-2">
+<p className="font-medium text-slate-900">{item.category}</p>
+<p className="text-sm font-semibold text-slate-700">{score}%</p>
+</div>
+<div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-100">
+<div className="h-full bg-indigo-600" style={{ width: `${score}%` }} />
+</div>
+<p className="mt-2 text-sm text-slate-700">{item.evidence}</p>
+</div>
+);
+})}
 </div>
 </div>
 
@@ -428,6 +535,24 @@ return (
 </li>
 ))}
 </ul>
+</div>
+</div>
+
+<div className="rounded-3xl border border-slate-200 bg-white p-6">
+<h3 className="text-lg font-semibold text-slate-900">Critical Gaps</h3>
+<div className="mt-4 space-y-3">
+{matchCriticalGaps.map((item) => {
+const severity = item.severity ?? "medium";
+return (
+<div key={`${item.gap}-${item.whyItMatters}`} className="rounded-xl border border-slate-200 p-3">
+<div className="flex items-center justify-between gap-2">
+<p className="font-medium text-slate-900">{item.gap}</p>
+<span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase ${riskBadgeClass[severity]}`}>{severity}</span>
+</div>
+<p className="mt-2 text-sm text-slate-700">{item.whyItMatters}</p>
+</div>
+);
+})}
 </div>
 </div>
 
