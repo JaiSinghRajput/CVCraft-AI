@@ -93,6 +93,7 @@ router.post("/match", upload.single("resume"), async (req: Request, res: Respons
 
 const generateSchema = z.object({
 	jobDescription: z.string().min(20).max(12000),
+	githubUsername: z.string().trim().min(1).max(80).optional(),
 });
 
 router.post("/generate", upload.single("linkedin"), async (req: Request, res: Response) => {
@@ -111,7 +112,12 @@ router.post("/generate", upload.single("linkedin"), async (req: Request, res: Re
 
 	await queues.resumeGeneration.add(
 		"resume-generation",
-		{ jobId, linkedinBuffer: req.file.buffer.toString("base64"), jobDescription: body.jobDescription },
+		{
+			jobId,
+			linkedinBuffer: req.file.buffer.toString("base64"),
+			jobDescription: body.jobDescription,
+			githubUsername: body.githubUsername,
+		},
 		{ ...defaultJobOptions, jobId },
 	);
 

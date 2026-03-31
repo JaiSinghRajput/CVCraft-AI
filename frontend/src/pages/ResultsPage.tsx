@@ -87,6 +87,26 @@ title?: string;
 summary?: string;
 sections?: Array<{ heading?: string; bullets?: string[] }>;
 plainTextResume?: string;
+isTechJob?: boolean;
+requiresGithubUsername?: boolean;
+githubUsername?: string;
+githubProjectsUsed?: Array<{
+name?: string;
+url?: string;
+description?: string;
+language?: string;
+relevanceScore?: number;
+metrics?: {
+stars?: number;
+forks?: number;
+watchers?: number;
+openIssues?: number;
+repoSizeKb?: number;
+estimatedDeliveryImpact?: number;
+};
+}>;
+pdfBase64?: string;
+pdfFileName?: string;
 }
 
 const toList = (value: unknown): string[] =>
@@ -207,6 +227,27 @@ const extractedResponsibilities = toList(extractedRequirements?.responsibilities
 const generatedSections = Array.isArray(generatedResult.sections)
 ? generatedResult.sections.filter((section) => section && typeof section === "object")
 : [];
+const githubProjectsUsed = Array.isArray(generatedResult.githubProjectsUsed)
+? generatedResult.githubProjectsUsed.filter((project) => project && typeof project === "object")
+: [];
+
+const downloadGeneratedPdf = () => {
+if (!generatedResult.pdfBase64) return;
+const binary = atob(generatedResult.pdfBase64);
+const bytes = new Uint8Array(binary.length);
+for (let i = 0; i < binary.length; i += 1) {
+bytes[i] = binary.charCodeAt(i);
+}
+const blob = new Blob([bytes], { type: "application/pdf" });
+const url = URL.createObjectURL(blob);
+const link = document.createElement("a");
+link.href = url;
+link.download = generatedResult.pdfFileName ?? `ai-career-resume-${jobId}.pdf`;
+document.body.appendChild(link);
+link.click();
+link.remove();
+URL.revokeObjectURL(url);
+};
 
 return (
 <div className="mx-auto max-w-6xl px-4 py-10">
@@ -574,6 +615,16 @@ return (
 <div className="rounded-3xl border border-slate-200 bg-white p-6">
 <h2 className="text-2xl font-semibold text-slate-900">{generatedResult.title ?? "Tailored Resume"}</h2>
 <p className="mt-3 text-sm leading-7 text-slate-700">{generatedResult.summary}</p>
+<div className="mt-4 flex flex-wrap gap-2 text-xs">
+<span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold uppercase tracking-wider text-slate-700">
+{generatedResult.isTechJob ? "Tech Job" : "Non-Tech Job"}
+</span>
+{generatedResult.githubUsername ? (
+<span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
+GitHub: @{generatedResult.githubUsername}
+</span>
+) : null}
+</div>
 </div>
 
 <div className="grid gap-4 md:grid-cols-2">
@@ -606,11 +657,46 @@ className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 h
 >
 Download .txt
 </button>
+{generatedResult.pdfBase64 ? (
+<button
+onClick={downloadGeneratedPdf}
+className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
+>
+Download Formatted PDF
+</button>
+) : null}
 </div>
 <pre className="max-h-[360px] overflow-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
 {generatedResult.plainTextResume ?? textResult}
 </pre>
 </div>
+
+{githubProjectsUsed.length ? (
+<div className="rounded-3xl border border-slate-200 bg-white p-6">
+<h3 className="text-lg font-semibold text-slate-900">GitHub Projects Added ({githubProjectsUsed.length})</h3>
+<div className="mt-4 grid gap-3 md:grid-cols-2">
+{githubProjectsUsed.map((project) => (
+<div key={`${project.name}-${project.url}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+<div className="flex items-start justify-between gap-2">
+<p className="font-medium text-slate-900">{project.name}</p>
+<span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+{Math.round(Number(project.relevanceScore ?? 0))}/100
+</span>
+</div>
+<p className="mt-2 text-sm text-slate-700">{project.description}</p>
+{project.url ? (
+<a href={project.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-medium text-emerald-700 hover:text-emerald-800">
+Open Repository
+</a>
+) : null}
+<p className="mt-3 text-xs text-slate-600">
+{project.language ?? "Unknown stack"} • {project.metrics?.stars ?? 0} stars • {project.metrics?.forks ?? 0} forks • Impact {project.metrics?.estimatedDeliveryImpact ?? 0}/100
+</p>
+</div>
+))}
+</div>
+</div>
+) : null}
 </div>
 ) : null}
 

@@ -16,11 +16,38 @@ export const UploadPage = () => {
 	const [kind, setKind] = useState<JobKind>("analyze");
 	const [file, setFile] = useState<File | null>(null);
 	const [jobDescription, setJobDescription] = useState("");
+	const [githubUsername, setGithubUsername] = useState("");
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 	const navigate = useNavigate();
 
 	const requiresJobDescription = useMemo(() => kind !== "analyze", [kind]);
+	const looksLikeTechJob = useMemo(() => {
+		if (kind !== "generate") {
+			return false;
+		}
+		const text = jobDescription.toLowerCase();
+		const techSignals = [
+			"software",
+			"developer",
+			"engineer",
+			"react",
+			"node",
+			"typescript",
+			"javascript",
+			"python",
+			"java",
+			"api",
+			"backend",
+			"frontend",
+			"cloud",
+			"aws",
+			"docker",
+			"kubernetes",
+		];
+		const hits = techSignals.reduce((count, signal) => (text.includes(signal) ? count + 1 : count), 0);
+		return hits >= 2;
+	}, [kind, jobDescription]);
 
 	const onSubmit = async (event: FormEvent) => {
 		event.preventDefault();
@@ -36,6 +63,11 @@ export const UploadPage = () => {
 			return;
 		}
 
+		if (kind === "generate" && looksLikeTechJob && githubUsername.trim().length < 2) {
+			setError("This looks like a tech role. Please add GitHub username to enrich projects.");
+			return;
+		}
+
 		setLoading(true);
 		try {
 			let jobId = "";
@@ -44,7 +76,7 @@ export const UploadPage = () => {
 			} else if (kind === "match") {
 				jobId = (await submitMatch(file, jobDescription)).jobId;
 			} else {
-				jobId = (await submitGenerate(file, jobDescription)).jobId;
+				jobId = (await submitGenerate(file, jobDescription, githubUsername)).jobId;
 			}
 			navigate(`/results/${jobId}`);
 		} catch (requestError) {
@@ -93,16 +125,35 @@ export const UploadPage = () => {
 				</div>
 
 				{requiresJobDescription ? (
-					<div>
-						<label className="mb-2 block text-sm font-medium text-slate-700">Job Description</label>
-						<textarea
-							rows={8}
-							value={jobDescription}
-							onChange={(event) => setJobDescription(event.target.value)}
-							className="w-full rounded-xl border border-slate-300 p-3"
-							placeholder="Paste the target job description"
-						/>
-					</div>
+					<>
+						<div>
+							<label className="mb-2 block text-sm font-medium text-slate-700">Job Description</label>
+							<textarea
+								rows={8}
+								value={jobDescription}
+								onChange={(event) => setJobDescription(event.target.value)}
+								className="w-full rounded-xl border border-slate-300 p-3"
+								placeholder="Paste the target job description"
+							/>
+						</div>
+						{kind === "generate" ? (
+							<div className="mt-4">
+								<label className="mb-2 block text-sm font-medium text-slate-700">GitHub Username</label>
+								<input
+									type="text"
+									value={githubUsername}
+									onChange={(event) => setGithubUsername(event.target.value)}
+									className="w-full rounded-xl border border-slate-300 p-3"
+									placeholder={looksLikeTechJob ? "Required for tech jobs" : "Optional"}
+								/>
+								<p className="mt-2 text-xs text-slate-500">
+									{looksLikeTechJob
+										? "Tech JD detected. We will rank and include your best 5 public GitHub projects matching the role."
+										: "If this is a non-tech role, GitHub username can be left empty."}
+								</p>
+							</div>
+						) : null}
+					</>
 				) : null}
 
 				{error ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}

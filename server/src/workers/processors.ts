@@ -58,14 +58,14 @@ export const processJobMatching = async (
 };
 
 export const processResumeGeneration = async (
-	job: Job<{ jobId: string; linkedinBuffer: string; jobDescription: string }>,
+	job: Job<{ jobId: string; linkedinBuffer: string; jobDescription: string; githubUsername?: string }>,
 ): Promise<void> => {
-	const { jobId, linkedinBuffer, jobDescription } = job.data;
+	const { jobId, linkedinBuffer, jobDescription, githubUsername } = job.data;
 	await setState(jobId, "resume-generation", "processing");
 
 	try {
 		const text = await extractPdfText(Buffer.from(linkedinBuffer, "base64"));
-		const result = await generateTailoredResume(text, jobDescription);
+		const result = await generateTailoredResume(text, jobDescription, githubUsername);
 		await setState(jobId, "resume-generation", "completed", result);
 	} catch (error) {
 		await setState(jobId, "resume-generation", "failed", undefined, (error as Error).message);

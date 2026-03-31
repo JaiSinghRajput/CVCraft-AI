@@ -37,10 +37,14 @@ export const submitMatch = async (
 export const submitGenerate = async (
 	linkedin: File,
 	jobDescription: string,
+	githubUsername?: string,
 ): Promise<{ jobId: string; status: JobStatus }> => {
 	const form = new FormData();
 	form.append("linkedin", linkedin);
 	form.append("jobDescription", jobDescription);
+	if (githubUsername?.trim()) {
+		form.append("githubUsername", githubUsername.trim());
+	}
 	const response = await api.post("/generate", form);
 	return response.data as { jobId: string; status: JobStatus };
 };

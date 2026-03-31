@@ -13,6 +13,7 @@ export const env = {
 	openAiApiKey: process.env.OPENAI_API_KEY ?? "",
 	openAiBaseUrl: process.env.OPENAI_BASE_URL ?? "",
 	openAiModel: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+	githubToken: process.env.GITHUB_TOKEN ?? "",
 	maxUploadMb: toInt(process.env.MAX_UPLOAD_MB, 6),
 	rateLimitPoints: toInt(process.env.RATE_LIMIT_POINTS, 30),
 	rateLimitDurationSec: toInt(process.env.RATE_LIMIT_DURATION_SEC, 60),
