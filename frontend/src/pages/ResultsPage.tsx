@@ -84,6 +84,8 @@ suggestions?: string[];
 
 interface ResumeGenerationResult {
 title?: string;
+subtitle?: string;
+contactLine?: string;
 summary?: string;
 sections?: Array<{ heading?: string; bullets?: string[] }>;
 plainTextResume?: string;
@@ -109,10 +111,51 @@ pdfBase64?: string;
 pdfFileName?: string;
 }
 
+interface EditableResumeSection {
+heading: string;
+bullets: string[];
+}
+
+interface EditableResume {
+title: string;
+subtitle: string;
+contactLine: string;
+summary: string;
+sections: EditableResumeSection[];
+}
+
 const toList = (value: unknown): string[] =>
 Array.isArray(value)
 ? value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
 : [];
+
+const escapeHtml = (value: string): string =>
+value
+.replace(/&/g, "&amp;")
+.replace(/</g, "&lt;")
+.replace(/>/g, "&gt;")
+.replace(/"/g, "&quot;")
+.replace(/'/g, "&#39;");
+
+interface HeaderContactInfo {
+email: string;
+linkedin: string;
+other: string;
+}
+
+const extractHeaderContactInfo = (contactLine: string): HeaderContactInfo => {
+const raw = contactLine ?? "";
+const email = raw.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] ?? "";
+const linkedinMatch = raw.match(/(?:https?:\/\/)?(?:www\.)?linkedin\.com\/[\w\-./%]+/i)?.[0] ?? "";
+const linkedin = linkedinMatch
+? (linkedinMatch.startsWith("http") ? linkedinMatch : `https://${linkedinMatch}`)
+: "";
+const withoutEmail = email ? raw.replace(email, "") : raw;
+const withoutLinkedin = linkedinMatch ? withoutEmail.replace(linkedinMatch, "") : withoutEmail;
+const other = withoutLinkedin.replace(/[|,;]\s*[|,;]*/g, " | ").replace(/\s+/g, " ").trim().replace(/^\|\s*|\s*\|$/g, "");
+
+return { email, linkedin, other };
+};
 
 const progressColor = (status: string): string => {
 if (status === "completed") return "bg-emerald-600";
@@ -130,6 +173,7 @@ export const ResultsPage = () => {
 const { jobId = "" } = useParams();
 const [data, setData] = useState<JobResponse | null>(null);
 const [error, setError] = useState("");
+const [editableResume, setEditableResume] = useState<EditableResume | null>(null);
 
 useEffect(() => {
 if (!jobId) return;
@@ -160,23 +204,6 @@ active = false;
 
 const textResult = useMemo(() => (data?.result ? JSON.stringify(data.result, null, 2) : ""), [data]);
 
-const copyResult = async () => {
-if (!textResult) return;
-await navigator.clipboard.writeText(textResult);
-};
-
-const downloadResult = () => {
-if (!textResult) return;
-const blob = new Blob([textResult], { type: "text/plain;charset=utf-8" });
-const url = URL.createObjectURL(blob);
-const link = document.createElement("a");
-link.href = url;
-link.download = `ai-career-result-${jobId}.txt`;
-document.body.appendChild(link);
-link.click();
-link.remove();
-URL.revokeObjectURL(url);
-};
 
 const atsResult = (data?.result ?? {}) as ResumeAnalysisResult;
 const matchResult = (data?.result ?? {}) as JobMatchResult;
@@ -231,40 +258,225 @@ const githubProjectsUsed = Array.isArray(generatedResult.githubProjectsUsed)
 ? generatedResult.githubProjectsUsed.filter((project) => project && typeof project === "object")
 : [];
 
-const downloadGeneratedPdf = () => {
-if (!generatedResult.pdfBase64) return;
-const binary = atob(generatedResult.pdfBase64);
-const bytes = new Uint8Array(binary.length);
-for (let i = 0; i < binary.length; i += 1) {
-bytes[i] = binary.charCodeAt(i);
+const buildEditableResumeFromResult = (): EditableResume => ({
+title: generatedResult.title?.trim() || "Tailored Resume",
+subtitle: generatedResult.subtitle?.trim() || "",
+contactLine: generatedResult.contactLine?.trim() || "",
+summary: generatedResult.summary?.trim() || "",
+sections: generatedSections.map((section) => ({
+heading: (section.heading ?? "Section").trim(),
+bullets: toList(section.bullets),
+})),
+});
+
+const headerContactInfo = extractHeaderContactInfo(editableResume?.contactLine ?? "");
+
+useEffect(() => {
+if (!isGenerate || data?.status !== "completed") {
+return;
 }
-const blob = new Blob([bytes], { type: "application/pdf" });
-const url = URL.createObjectURL(blob);
-const link = document.createElement("a");
-link.href = url;
-link.download = generatedResult.pdfFileName ?? `ai-career-resume-${jobId}.pdf`;
-document.body.appendChild(link);
-link.click();
-link.remove();
-URL.revokeObjectURL(url);
+setEditableResume((prev) => prev ?? buildEditableResumeFromResult());
+}, [isGenerate, data?.status, data?.updatedAt]);
+
+useEffect(() => {
+setEditableResume(null);
+}, [jobId]);
+
+const setResumeField = (field: keyof Omit<EditableResume, "sections">, value: string) => {
+setEditableResume((prev) => (prev ? { ...prev, [field]: value } : prev));
+};
+
+const setSectionHeading = (sectionIndex: number, heading: string) => {
+setEditableResume((prev) => {
+if (!prev) return prev;
+const sections = prev.sections.map((section, index) => (index === sectionIndex ? { ...section, heading } : section));
+return { ...prev, sections };
+});
+};
+
+const setSectionBullet = (sectionIndex: number, bulletIndex: number, bullet: string) => {
+setEditableResume((prev) => {
+if (!prev) return prev;
+const sections = prev.sections.map((section, index) => {
+if (index !== sectionIndex) return section;
+const bullets = section.bullets.map((item, itemIndex) => (itemIndex === bulletIndex ? bullet : item));
+return { ...section, bullets };
+});
+return { ...prev, sections };
+});
+};
+
+const addSection = () => {
+setEditableResume((prev) => {
+if (!prev) return prev;
+return { ...prev, sections: [...prev.sections, { heading: "New Section", bullets: ["Add bullet"] }] };
+});
+};
+
+const addBullet = (sectionIndex: number) => {
+setEditableResume((prev) => {
+if (!prev) return prev;
+const sections = prev.sections.map((section, index) =>
+index === sectionIndex ? { ...section, bullets: [...section.bullets, "New bullet"] } : section,
+);
+return { ...prev, sections };
+});
+};
+
+const removeBullet = (sectionIndex: number, bulletIndex: number) => {
+setEditableResume((prev) => {
+if (!prev) return prev;
+const sections = prev.sections.map((section, index) => {
+if (index !== sectionIndex) return section;
+const bullets = section.bullets.filter((_item, idx) => idx !== bulletIndex);
+return { ...section, bullets: bullets.length ? bullets : ["Add bullet"] };
+});
+return { ...prev, sections };
+});
+};
+
+const printEditableResumePdf = () => {
+if (!editableResume) return;
+
+const contactInfo = extractHeaderContactInfo(editableResume.contactLine);
+const contactHtmlParts: string[] = [];
+if (contactInfo.email) {
+contactHtmlParts.push(`<a href="mailto:${escapeHtml(contactInfo.email)}">${escapeHtml(contactInfo.email)}</a>`);
+}
+if (contactInfo.linkedin) {
+contactHtmlParts.push(`<a href="${escapeHtml(contactInfo.linkedin)}" target="_blank" rel="noreferrer">${escapeHtml(contactInfo.linkedin.replace(/^https?:\/\//, ""))}</a>`);
+}
+if (contactInfo.other) {
+contactHtmlParts.push(`<span>${escapeHtml(contactInfo.other)}</span>`);
+}
+const contactHtml = contactHtmlParts.length ? `<p class="contact">${contactHtmlParts.join("<span class=\"sep\"> | </span>")}</p>` : "";
+
+const renderedSections = editableResume.sections
+.map((section) => {
+const bullets = section.bullets
+.map((bullet) => `<li>${escapeHtml(bullet)}</li>`)
+.join("");
+return `<section><h3>${escapeHtml(section.heading)}</h3><ul>${bullets}</ul></section>`;
+})
+.join("");
+
+const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${escapeHtml(editableResume.title)}</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: Georgia, 'Times New Roman', serif; color: #0f172a; background: #dbeafe; }
+.page {
+width: 210mm;
+min-height: 297mm;
+margin: 0 auto;
+padding: 0;
+background: #ffffff;
+box-shadow: 0 22px 56px -28px rgba(2, 6, 23, 0.45);
+}
+.hero {
+background: linear-gradient(115deg, #0f172a 0%, #0b3b52 52%, #0f766e 100%);
+color: #f8fafc;
+padding: 12mm 12mm 8mm 12mm;
+}
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10mm; }
+.name-wrap { max-width: 128mm; }
+.name { font-size: 31px; font-weight: 700; margin: 0; letter-spacing: .2px; line-height: 1.06; }
+.subtitle { margin: 4px 0 0; color: #d1fae5; font-size: 12.2px; font-weight: 700; font-family: 'Trebuchet MS', Arial, sans-serif; letter-spacing: .6px; }
+.contact { margin: 0; font-size: 10.2px; line-height: 1.45; color: #e2e8f0; text-align: right; font-family: 'Trebuchet MS', Arial, sans-serif; max-width: 66mm; }
+.contact a { color: #d1fae5; text-decoration: none; border-bottom: 1px dotted rgba(209, 250, 229, 0.65); }
+.contact .sep { opacity: .8; }
+.body { padding: 8mm 12mm 11mm 12mm; }
+section { margin-top: 12px; }
+h3 {
+margin: 0 0 7px;
+font-size: 10.6px;
+letter-spacing: 1.9px;
+color: #0f4f5f;
+text-transform: uppercase;
+font-family: 'Trebuchet MS', Arial, sans-serif;
+border-bottom: 1px solid #bfdbfe;
+padding-bottom: 5px;
+}
+p.summary { margin: 0; font-size: 11.35px; line-height: 1.6; color: #1f2937; }
+ul { margin: 0; padding-left: 17px; }
+li { margin: 0 0 5px; font-size: 11.15px; line-height: 1.48; color: #1f2937; }
+li::marker { color: #0f766e; }
+section, li { break-inside: avoid; page-break-inside: avoid; }
+
+@page {
+size: A4;
+margin: 12mm;
+}
+
+@media print {
+html, body { width: 210mm; }
+body {
+background: #ffffff;
+-webkit-print-color-adjust: exact;
+print-color-adjust: exact;
+}
+.page {
+width: auto;
+min-height: auto;
+margin: 0;
+padding: 0;
+box-shadow: none;
+}
+}
+</style>
+</head>
+<body>
+<article class="page">
+<div class="hero">
+<header class="header">
+<div class="name-wrap">
+<h1 class="name">${escapeHtml(editableResume.title)}</h1>
+${editableResume.subtitle ? `<p class="subtitle">${escapeHtml(editableResume.subtitle)}</p>` : ""}
+ </div>
+${contactHtml}
+</header>
+</div>
+<div class="body">
+${editableResume.summary ? `<section><h3>Professional Summary</h3><p class="summary">${escapeHtml(editableResume.summary)}</p></section>` : ""}
+${renderedSections}
+</div>
+</article>
+</body>
+</html>`;
+
+const win = window.open("", "_blank", "width=900,height=1100");
+if (!win) return;
+win.document.open();
+win.document.write(html);
+win.document.close();
+win.onload = () => {
+win.focus();
+setTimeout(() => {
+win.print();
+}, 120);
+};
 };
 
 return (
-<div className="mx-auto max-w-6xl px-4 py-10">
+<div className="w-full px-4 py-8 md:px-8 xl:px-12">
 <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
 <div>
 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Career Intelligence</p>
 <h1 className="mt-2 text-3xl font-semibold text-slate-900">Your Personalized Results</h1>
 </div>
 <Link
-className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400"
+className="border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-400"
 to="/"
 >
 Back to Upload
 </Link>
 </div>
 
-<div className="rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-[0_25px_60px_-35px_rgba(15,23,42,0.35)] backdrop-blur">
+<div className="border border-slate-200 bg-white p-6">
 <div className="flex flex-wrap items-center justify-between gap-3">
 <div>
 <p className="text-sm text-slate-500">Job ID</p>
@@ -611,96 +823,190 @@ return (
 ) : null}
 
 {isGenerate ? (
-<div className="space-y-6">
-<div className="rounded-3xl border border-slate-200 bg-white p-6">
-<h2 className="text-2xl font-semibold text-slate-900">{generatedResult.title ?? "Tailored Resume"}</h2>
-<p className="mt-3 text-sm leading-7 text-slate-700">{generatedResult.summary}</p>
-<div className="mt-4 flex flex-wrap gap-2 text-xs">
-<span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold uppercase tracking-wider text-slate-700">
-{generatedResult.isTechJob ? "Tech Job" : "Non-Tech Job"}
+<section className="space-y-5">
+<div className="border-b border-slate-200 pb-3">
+<div className="flex flex-wrap items-center justify-between gap-3">
+<h2 className="text-2xl font-semibold text-slate-900">Resume Studio</h2>
+<div className="flex flex-wrap items-center gap-3">
+<span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+{generatedResult.isTechJob ? "Tech Role" : "General Role"}
 </span>
-{generatedResult.githubUsername ? (
-<span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">
-GitHub: @{generatedResult.githubUsername}
-</span>
-) : null}
+{generatedResult.githubUsername ? <span className="text-xs text-slate-600">GitHub @{generatedResult.githubUsername}</span> : null}
+<button
+type="button"
+onClick={printEditableResumePdf}
+className="bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+>
+Export A4 PDF
+</button>
+</div>
 </div>
 </div>
 
-<div className="grid gap-4 md:grid-cols-2">
-{generatedSections.map((section) => (
-<div
-key={`${section.heading}-${(section.bullets ?? []).join("|")}`}
-className="rounded-2xl border border-slate-200 bg-white p-5"
+{editableResume ? (
+<div className="grid gap-0 border border-slate-300 bg-white xl:grid-cols-[42%_58%]">
+<div className="max-h-[calc(100vh-230px)] overflow-auto border-r border-slate-300 bg-slate-50 p-5">
+<p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Edit Resume Content</p>
+<div className="space-y-4">
+<label className="block text-sm font-medium text-slate-700">
+Resume Title
+<input
+value={editableResume.title}
+onChange={(event) => setResumeField("title", event.target.value)}
+className="mt-1 w-full border border-slate-300 bg-white px-3 py-2 text-sm"
+/>
+</label>
+<label className="block text-sm font-medium text-slate-700">
+Subtitle
+<input
+value={editableResume.subtitle}
+onChange={(event) => setResumeField("subtitle", event.target.value)}
+className="mt-1 w-full border border-slate-300 bg-white px-3 py-2 text-sm"
+/>
+</label>
+<label className="block text-sm font-medium text-slate-700">
+Contact Line
+<input
+value={editableResume.contactLine}
+onChange={(event) => setResumeField("contactLine", event.target.value)}
+className="mt-1 w-full border border-slate-300 bg-white px-3 py-2 text-sm"
+placeholder="Email | LinkedIn | Phone | Location"
+/>
+</label>
+<label className="block text-sm font-medium text-slate-700">
+Summary
+<textarea
+rows={4}
+value={editableResume.summary}
+onChange={(event) => setResumeField("summary", event.target.value)}
+className="mt-1 w-full border border-slate-300 bg-white px-3 py-2 text-sm"
+/>
+</label>
+
+<div className="space-y-3">
+{editableResume.sections.map((section, sectionIndex) => (
+<div key={`${section.heading}-${sectionIndex}`} className="border border-slate-300 bg-white p-3">
+<div className="mb-2 flex items-center gap-2">
+<input
+value={section.heading}
+onChange={(event) => setSectionHeading(sectionIndex, event.target.value)}
+className="w-full border border-slate-300 px-2 py-1.5 text-sm font-semibold"
+/>
+<button
+type="button"
+onClick={() => addBullet(sectionIndex)}
+className="border border-slate-300 bg-white px-2 py-1.5 text-xs font-medium text-slate-700"
 >
-<h3 className="text-lg font-semibold text-slate-900">{section.heading}</h3>
-<ul className="mt-3 list-disc space-y-2 pl-5 text-sm text-slate-700">
-{toList(section.bullets).map((bullet) => (
-<li key={bullet}>{bullet}</li>
+Add
+</button>
+</div>
+<div className="space-y-2">
+{section.bullets.map((bullet, bulletIndex) => (
+<div key={`${sectionIndex}-${bulletIndex}`} className="flex items-start gap-2">
+<textarea
+rows={2}
+value={bullet}
+onChange={(event) => setSectionBullet(sectionIndex, bulletIndex, event.target.value)}
+className="w-full border border-slate-300 bg-white px-2 py-1.5 text-sm"
+/>
+<button
+type="button"
+onClick={() => removeBullet(sectionIndex, bulletIndex)}
+className="border border-rose-300 bg-rose-50 px-2 py-1.5 text-xs font-medium text-rose-700"
+>
+Delete
+</button>
+</div>
+))}
+</div>
+</div>
+))}
+</div>
+
+<button
+type="button"
+onClick={addSection}
+className="border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+>
+Add Section
+</button>
+{githubProjectsUsed.length ? (
+<div className="border-t border-slate-300 pt-4">
+<p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">GitHub Projects Used</p>
+<ul className="mt-2 space-y-1 text-sm text-slate-700">
+{githubProjectsUsed.map((project) => (
+<li key={`${project.name}-${project.url}`}>{project.name}</li>
 ))}
 </ul>
 </div>
-))}
-</div>
-
-<div className="rounded-3xl border border-slate-200 bg-white p-6">
-<div className="mb-4 flex flex-wrap gap-3">
-<button
-onClick={copyResult}
-className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
->
-Copy Structured Result
-</button>
-<button
-onClick={downloadResult}
-className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
->
-Download .txt
-</button>
-{generatedResult.pdfBase64 ? (
-<button
-onClick={downloadGeneratedPdf}
-className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800"
->
-Download Formatted PDF
-</button>
 ) : null}
 </div>
-<pre className="max-h-[360px] overflow-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
-{generatedResult.plainTextResume ?? textResult}
-</pre>
 </div>
 
-{githubProjectsUsed.length ? (
-<div className="rounded-3xl border border-slate-200 bg-white p-6">
-<h3 className="text-lg font-semibold text-slate-900">GitHub Projects Added ({githubProjectsUsed.length})</h3>
-<div className="mt-4 grid gap-3 md:grid-cols-2">
-{githubProjectsUsed.map((project) => (
-<div key={`${project.name}-${project.url}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-<div className="flex items-start justify-between gap-2">
-<p className="font-medium text-slate-900">{project.name}</p>
-<span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-{Math.round(Number(project.relevanceScore ?? 0))}/100
-</span>
+<div className="max-h-[calc(100vh-230px)] overflow-auto bg-[#dbeafe] p-4">
+<div className="mx-auto w-[210mm] min-h-[297mm] overflow-hidden bg-white shadow-[0_24px_58px_-28px_rgba(2,6,23,0.45)]">
+<header className="bg-gradient-to-r from-slate-950 via-cyan-900 to-teal-700 px-10 pb-7 pt-10 text-white">
+<div className="flex items-start justify-between gap-8">
+<div className="max-w-[70%]">
+<h2 className="font-serif text-4xl font-bold leading-tight tracking-tight">{editableResume.title}</h2>
+{editableResume.subtitle ? <p className="mt-2 font-sans text-xs font-semibold uppercase tracking-[0.14em] text-emerald-100">{editableResume.subtitle}</p> : null}
 </div>
-<p className="mt-2 text-sm text-slate-700">{project.description}</p>
-{project.url ? (
-<a href={project.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-medium text-emerald-700 hover:text-emerald-800">
-Open Repository
+{headerContactInfo.email || headerContactInfo.linkedin || headerContactInfo.other ? (
+<div className="max-w-[34%] text-right font-sans text-[11px] leading-5 text-slate-100">
+{headerContactInfo.email ? (
+<div>
+<a href={`mailto:${headerContactInfo.email}`} className="border-b border-emerald-100/60 text-emerald-100 hover:text-white">
+{headerContactInfo.email}
 </a>
-) : null}
-<p className="mt-3 text-xs text-slate-600">
-{project.language ?? "Unknown stack"} • {project.metrics?.stars ?? 0} stars • {project.metrics?.forks ?? 0} forks • Impact {project.metrics?.estimatedDeliveryImpact ?? 0}/100
-</p>
 </div>
+) : null}
+{headerContactInfo.linkedin ? (
+<div>
+<a href={headerContactInfo.linkedin} target="_blank" rel="noreferrer" className="border-b border-emerald-100/60 text-emerald-100 hover:text-white">
+{headerContactInfo.linkedin.replace(/^https?:\/\//, "")}
+</a>
+</div>
+) : null}
+{headerContactInfo.other ? <div className="text-slate-200">{headerContactInfo.other}</div> : null}
+</div>
+) : null}
+</div>
+</header>
+<div className="px-10 pb-10 pt-7">
+{editableResume.summary ? (
+<section>
+<p className="border-b border-blue-200 pb-1 font-sans text-[11px] font-bold uppercase tracking-[0.18em] text-teal-800">Professional Summary</p>
+<p className="mt-2 font-serif text-[14px] leading-7 text-slate-700">{editableResume.summary}</p>
+</section>
+) : null}
+<div className="mt-4 space-y-4">
+{editableResume.sections.map((section, sectionIndex) => (
+<section key={`${section.heading}-preview-${sectionIndex}`}>
+<h3 className="border-b border-blue-200 pb-1 font-sans text-[11px] font-bold uppercase tracking-[0.18em] text-teal-800">{section.heading}</h3>
+<ul className="mt-2 list-disc space-y-1 pl-5 font-serif text-[14px] leading-7 text-slate-700 marker:text-teal-700">
+{section.bullets.map((bullet, bulletIndex) => (
+<li key={`${sectionIndex}-preview-bullet-${bulletIndex}`}>{bullet}</li>
+))}
+</ul>
+</section>
 ))}
 </div>
 </div>
-) : null}
+</div>
+</div>
 </div>
 ) : null}
 
-<details className="rounded-2xl border border-slate-200 bg-white p-4">
+<details className="border border-slate-300 bg-white p-3">
+<summary className="cursor-pointer text-sm font-medium text-slate-700">Generated Data</summary>
+<pre className="mt-2 max-h-[260px] overflow-auto bg-slate-900 p-3 text-xs text-slate-100">
+{editableResume ? JSON.stringify(editableResume, null, 2) : generatedResult.plainTextResume ?? textResult}
+</pre>
+</details>
+</section>
+) : null}
+
+<details className="border border-slate-200 bg-white p-4">
 <summary className="cursor-pointer text-sm font-medium text-slate-700">Show Raw JSON (debug)</summary>
 <pre className="mt-3 max-h-[320px] overflow-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100">
 {textResult}

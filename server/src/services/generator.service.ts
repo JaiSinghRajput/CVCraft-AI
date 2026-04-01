@@ -80,6 +80,8 @@ interface ParsedLinkedInProfile {
 
 export interface ResumeGenerationResult {
 	title: string;
+	subtitle?: string;
+	contactLine?: string;
 	summary: string;
 	sections: Array<{ heading: string; bullets: string[] }>;
 	plainTextResume: string;
@@ -413,8 +415,7 @@ const buildBaselineResume = (
 		sections.push({
 			heading: "Projects",
 			bullets: githubProjects.map(
-				(project) =>
-					`${project.name}: ${project.description} (stack ${project.language}, stars ${project.metrics.stars}, forks ${project.metrics.forks}, relevance ${project.relevanceScore}/100).`,
+				(project) => projectResumeNarrative(project, jobProfile.primaryKeywords),
 			),
 		});
 	}
@@ -462,6 +463,19 @@ const computeRelevance = (repo: GithubRepo, jdKeywords: string[]): number => {
 const inferImpact = (repo: GithubRepo, relevanceScore: number): number => {
 	const impact = 38 + relevanceScore * 0.42 + repo.stargazers_count * 0.45 + repo.forks_count * 0.75;
 	return Math.max(35, Math.min(95, Math.round(impact)));
+};
+
+const projectResumeNarrative = (project: GithubProjectInsight, roleKeywords: string[]): string => {
+	const baseDescription = project.description.replace(/\.$/, "").trim();
+	const keywordPhrase = roleKeywords.slice(0, 2).join(" and ");
+	const roleLine = keywordPhrase
+		? `Tailored toward ${keywordPhrase} expectations with practical feature implementation and clean code structure.`
+		: "Built with production-minded architecture, clean code structure, and practical user-focused workflows.";
+	const stackLine = project.language && project.language !== "Technology Stack Not Public"
+		? `Implemented primarily with ${project.language}.`
+		: "Implemented using a modern web development stack.";
+
+	return `${project.name}: ${baseDescription}. ${stackLine} ${roleLine}`;
 };
 
 const extractJobProfile = async (jobDescription: string): Promise<JobProfile> => {
@@ -691,8 +705,7 @@ ${githubContext}`;
 
 	if (githubProjects.length) {
 		const projectBullets = githubProjects.map(
-			(project) =>
-				`${project.name}: ${project.description} (relevance ${project.relevanceScore}/100, stars ${project.metrics.stars}, forks ${project.metrics.forks}, estimated delivery impact ${project.metrics.estimatedDeliveryImpact}/100).`,
+			(project) => projectResumeNarrative(project, jobProfile.primaryKeywords),
 		);
 		ensureSection(sections, "Projects", projectBullets);
 	}
@@ -722,6 +735,8 @@ ${githubContext}`;
 
 	return {
 		title,
+		subtitle,
+		contactLine,
 		summary,
 		sections: dedupedSections,
 		plainTextResume,
